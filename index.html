@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mapa del Tesoro</title>
+  <style>
+    :root{
+      --bg:#f2e6bd; --ink:#4b371c; --gold:#f5c542; --shadow:rgba(0,0,0,.25);
+    }
+    html,body{height:100%}
+    body{ margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial; background:var(--bg); color:var(--ink); text-align:center; display:flex; flex-direction:column; align-items:center; }
+
+    header{ width:min(1100px,100%); padding:16px 16px 0; }
+    .title{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .title h1{ margin:0; font-size:clamp(20px,3vw,36px); }
+    .hud{ margin-top:8px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; justify-content:center; }
+    .pill{ display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; background:#fff9; backdrop-filter: blur(4px); box-shadow:0 4px 12px var(--shadow); }
+    .btn{ cursor:pointer; user-select:none; border:none; border-radius:12px; padding:10px 14px; background:#fff; color:var(--ink); box-shadow:0 4px 12px var(--shadow); font-weight:600; }
+    .btn:active{ transform: translateY(1px); }
+
+    /* MAPA */
+    #mapa{ position:relative; width:min(1100px,96vw); height:min(650px,72vh); margin:16px; border-radius:24px; background:
+      radial-gradient(120% 80% at 100% 0%, rgba(0,0,0,.05), transparent 60%),
+      radial-gradient(120% 80% at 0% 100%, rgba(0,0,0,.05), transparent 60%),
+      repeating-linear-gradient(0deg, rgba(0,0,0,.03) 0 2px, transparent 2px 6px),
+      #eadfad; box-shadow: 0 20px 40px var(--shadow), inset 0 0 0 5px #d0c48d, inset 0 0 0 10px #b49e56; overflow:hidden; outline:none; }
+
+    /* Camino punteado */
+    .ruta{ position:absolute; inset:0; pointer-events:none; }
+    .ruta path{ stroke:#7c5b2a; stroke-width:3; stroke-dasharray:8 10; fill:none; opacity:.65; }
+
+    /* ISLAS */
+    .isla{ position:absolute; transform: translate(-50%, -50%); display:flex; flex-direction:column; align-items:center; gap:6px; }
+    .isla .base{ width:110px; height:80px; border-radius:40% 45% 50% 45%/45% 40% 55% 50%; background: radial-gradient(circle at 30% 30%, #ffe9a6, #e3b972 60%, #b8883c); box-shadow: 0 10px 14px var(--shadow); position:relative; }
+    .isla .palma{ position:absolute; bottom:24px; left:12px; width:24px; height:48px; background:#5c8a3b; border-radius:12px; transform: rotate(-6deg); box-shadow: inset 0 -8px 0 #3f6c28; }
+    .isla .palma::after{ content:""; position:absolute; top:-16px; left:-18px; right:-18px; height:16px; border-radius: 50%; background:#2f9e44; box-shadow: 0 0 0 10px #2aa06a; opacity:.8 }
+
+    /* Cofres por imagen */
+    .cofreImg{ width: 90px; height:auto; position:absolute; left:50%; top:36%; transform: translate(-50%, -50%); cursor:pointer; outline:none; filter: drop-shadow(0 6px 10px var(--shadow)); }
+    .isla.abierta .cofreImg{ transform: translate(-50%, -50%) scale(1.02); }
+
+    .candado{ position:absolute; right:-6px; top:-6px; width:22px; height:28px; background: radial-gradient(circle at 30% 30%, #ffe7a3, #b68b1f 70%); border:2px solid #6b5312; border-radius:4px; display:grid; place-items:center; box-shadow:0 2px 4px var(--shadow); }
+    .candado::before{ content:""; width:12px; height:10px; border:3px solid #6b5312; border-bottom:none; border-radius:10px 10px 0 0; position:absolute; top:-10px; background: transparent; }
+
+    .brillos{ position:absolute; inset:0; pointer-events:none; }
+    .brillos span{ position:absolute; width:6px; height:6px; border-radius:50%; background: var(--gold); animation: pop .9s ease-out infinite; opacity:.85 }
+    @keyframes pop{ from{ transform: translate(0,0) scale(.8)} to{ transform: translate(var(--tx), var(--ty)) scale(1)} }
+
+    /* Tarjetita del tema */
+    .tema{ position:absolute; left:50%; top:98%; transform: translate(-50%, 0); background:#fff; color:#1f2937; padding:8px 12px; border-radius:10px; box-shadow:0 6px 14px var(--shadow); font-weight:700; white-space:nowrap; display:none; }
+    .isla.abierta .tema{ display:inline-block; }
+
+    /* LLAVE */
+    .llaveDock{ position:absolute; right:14px; top:14px; display:flex; align-items:center; gap:8px; }
+    .llave{ width:40px; height:40px; border-radius:50%; display:grid; place-items:center; background:#fff; box-shadow:0 6px 14px var(--shadow); cursor:pointer; user-select:none; }
+    .holding .cursorKey{ display:block; }
+    .cursorKey{ position:fixed; left:-100px; top:-100px; width:28px; height:28px; display:none; pointer-events:none; filter: drop-shadow(0 3px 6px var(--shadow)); }
+
+    /* TESORO FINAL */
+    .final{ position:absolute; left:88%; top:54%; transform: translate(-50%, -50%); text-align:center; }
+    .revelacion{ display:none; margin-top:10px; font-size: clamp(20px, 3.6vw, 44px); font-weight:900; color:var(--gold); text-shadow: 0 2px 0 #6b5219, 0 0 18px rgba(245,197,66,.8); animation: pulse 1.2s ease-in-out infinite alternate; }
+    @keyframes pulse{ from{ letter-spacing:0 } to{ letter-spacing:2px } }
+
+    /* TOOLTIPS */
+    .tooltip{ position:absolute; background:#111; color:#fff; padding:6px 10px; border-radius:8px; font-size:12px; white-space:nowrap; opacity:0; transform: translate(-50%, -8px); pointer-events:none; transition:.2s; left:50%; top:0; }
+    .isla:focus .tooltip, .isla:hover .tooltip{ opacity:.9 }
+
+    /* Accesibilidad */
+    .isla:focus-visible .cofreImg{ outline: 3px dashed #0ea5a5; outline-offset:6px }
+
+    @media (max-width:700px){ .cofreImg{ width:76px } .isla .base{ width:90px; height:66px } }
+
+    /* 🎬 CINEMÁTICA FINAL (overlay de cierre) */
+    #cinematica{
+      position:fixed; inset:0; display:none; place-items:center; z-index:99999;
+      background: radial-gradient(120% 80% at 50% 50%, #1b1205, #000);
+      color:var(--gold);
+      text-align:center;
+    }
+    #cinematica .inner{ position:relative; padding:24px; }
+    #cinematica h1{
+      margin:0;
+      font-size: clamp(40px, 8vw, 120px);
+      font-weight:900;
+      letter-spacing:.06em;
+      text-shadow: 0 4px 0 #6b5219, 0 0 28px rgba(245,197,66,.85);
+      opacity:0; transform: scale(.9);
+      animation: cineIn 1.6s ease forwards .3s;
+    }
+    #cinematica p{
+      margin-top:10px; color:#fff; opacity:.85; font-weight:700;
+      opacity:0; transform: translateY(8px);
+      animation: cineIn2 .9s ease forwards 1.2s;
+    }
+    #cinematica .glow{
+      position:absolute; inset:-20%;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(245,197,66,.12), transparent 40%),
+        radial-gradient(circle at 20% 30%, rgba(245,197,66,.08), transparent 30%),
+        radial-gradient(circle at 80% 70%, rgba(245,197,66,.08), transparent 30%);
+      filter: blur(30px);
+      pointer-events:none;
+    }
+    @keyframes cineIn{ to{ opacity:1; transform:scale(1)} }
+    @keyframes cineIn2{ to{ opacity:1; transform:translateY(0)} }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">
+      <svg width="40" height="40" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3c4.97 0 9 4.03 9 9s-4.03 9-9 9S3 16.97 3 12 7.03 3 12 3Zm0 2a7 7 0 1 0 .001 14.001A7 7 0 0 0 12 5Zm-2 4h6v2h-6V9Zm0 4h4v2h-4v-2Z"/></svg>
+      <h1>Mapa del Tesoro </h1>
+    </div>
+    <div class="hud">
+      <div class="pill" id="estadoLlave" aria-live="polite">🔒 Cofres bloqueados — toma la llave</div>
+      <div class="pill">Progreso: <span id="prog">0</span>/5</div>
+      <button class="btn" id="btnReset" title="Reiniciar progreso (R)">Reiniciar</button>
+    </div>
+  </header>
+
+  <main id="mapa" tabindex="0" aria-label="Mapa del tesoro. Usa clic o Enter para interactuar.">
+    <svg class="ruta" viewBox="0 0 1100 650" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M80,540 C220,420 200,300 160,180 C240,160 360,220 420,300 C500,340 600,360 700,300 C820,260 900,360 980,420" />
+    </svg>
+
+    <!-- Dock de llave -->
+    <div class="llaveDock">
+      <div id="llave" class="llave" role="button" aria-label="Tomar o soltar llave" title="Tomar/soltar llave (L)">
+        <kbd>🔑</kbd>
+      </div>
+    </div>
+
+    <img class="cursorKey" id="cursorKey" alt=" llave " src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 24 24'><path fill='%23d4af37' d='M7 14a5 5 0 1 1 2.32 4.21l-.78.79V21H6v-2H4v-2H2v-2h4.22l1.33-1.33A4.98 4.98 0 0 1 7 14Zm9-5a3 3 0 1 0-6 0a3 3 0 0 0 6 0Z'/></svg>" />
+
+    <!-- ISLAS + COFRES (1-5) -->
+    <section class="isla" style="left: 12%; top: 72%" tabindex="0" data-index="0">
+      <div class="base"><div class="palma"></div></div>
+      <img class="cofreImg" src="cofrecerrado.png" alt="Cofre 1" />
+      <div class="candado" aria-hidden="true"></div>
+      <div class="brillos"></div>
+      <div class="tema">El sí que confía sin ver</div>
+      <div class="tooltip">Necesitas la llave 🔑</div>
+    </section>
+
+    <section class="isla" style="left: 28%; top: 36%" tabindex="0" data-index="1">
+      <div class="base"><div class="palma"></div></div>
+      <img class="cofreImg" src="cofrecerrado.png" alt="Cofre 2" />
+      <div class="candado" aria-hidden="true"></div>
+      <div class="brillos"></div>
+      <div class="tema">El sí que implica renuncia</div>
+      <div class="tooltip">Toma la llave para abrir</div>
+    </section>
+
+    <section class="isla" style="left: 44%; top: 56%" tabindex="0" data-index="2">
+      <div class="base"><div class="palma"></div></div>
+      <img class="cofreImg" src="cofrecerrado.png" alt="Cofre 3" />
+      <div class="candado" aria-hidden="true"></div>
+      <div class="brillos"></div>
+      <div class="tema">El sí que se mantiene en la prueba</div>
+      <div class="tooltip">Toma la llave para abrir</div>
+    </section>
+
+    <section class="isla" style="left: 64%; top: 40%" tabindex="0" data-index="3">
+      <div class="base"><div class="palma"></div></div>
+      <img class="cofreImg" src="cofrecerrado.png" alt="Cofre 4" />
+      <div class="candado" aria-hidden="true"></div>
+      <div class="brillos"></div>
+      <div class="tema">El sí que cambia la historia</div>
+      <div class="tooltip">Toma la llave para abrir</div>
+    </section>
+
+    <section class="isla" style="left: 78%; top: 64%" tabindex="0" data-index="4">
+      <div class="base"><div class="palma"></div></div>
+      <img class="cofreImg" src="cofrecerrado.png" alt="Cofre 5" />
+      <div class="candado" aria-hidden="true"></div>
+      <div class="brillos"></div>
+      <div class="tema">El sí que se vive cada día</div>
+      <div class="tooltip">Toma la llave para abrir</div>
+    </section>
+
+    <!-- TESORO FINAL -->
+    <section class="isla final" id="final" style="left: 90%; top: 52%" tabindex="0">
+      <div class="base"><div class="palma"></div></div>
+      <img class="cofreImg" id="finalImg" src="cofrecerrado.png" alt="Tesoro Final" />
+      <div class="brillos" id="finalBrillos"></div>
+      <div class="revelacion" id="revelacion"></div>
+      <div class="tooltip">Abre los 5 cofres primero</div>
+    </section>
+  </main>
+
+  <!-- 🎬 Pantalla/Cinemática final -->
+  <section id="cinematica" aria-hidden="true">
+    <div class="glow" aria-hidden="true"></div>
+    <div class="inner">
+      <h1>UN SÍ SIN MEDIDA</h1>
+      <p>✨ Gracias por recorrer el camino ✨<br/>Presiona <strong>R</strong> para reiniciar</p>
+    </div>
+  </section>
+
+  <script>
+    // ====== Estado global ======
+    const state = {
+      holdingKey: false,
+      // ⬇️ Cambiado a sessionStorage para que TODO se reinicie al cerrar el navegador
+      opened: JSON.parse(sessionStorage.getItem('openedCofres') || '[]'),
+    };
+
+    const $ = (sel, p=document) => p.querySelector(sel);
+    const $$ = (sel, p=document) => Array.from(p.querySelectorAll(sel));
+
+    const mapa = $('#mapa');
+    const llaveBtn = $('#llave');
+    const estadoLlave = $('#estadoLlave');
+    const cursorKey = $('#cursorKey');
+    const prog = $('#prog');
+    const btnReset = $('#btnReset');
+    const finalIsla = $('#final');
+    const finalImg = $('#finalImg');
+    const revelacion = $('#revelacion');
+    const cinematic = $('#cinematica');
+
+    // Normalizar progreso
+    if (!Array.isArray(state.opened) || state.opened.length !== 5) state.opened = [false,false,false,false,false];
+
+    // Colocar brillos iniciales
+    $$('.isla').forEach(isla => putSparkles(isla.querySelector('.brillos')));
+
+    // Aplicar progreso en cofres
+    $$('.isla[data-index]').forEach(isla => {
+      const idx = Number(isla.dataset.index);
+      const img = isla.querySelector('.cofreImg');
+      if (state.opened[idx]) openChest(isla, {silent:true});
+      // Handlers
+      function tryOpen(){
+        if(!state.holdingKey){ pulse(isla.querySelector('.tooltip')); return; }
+        if(isla.classList.contains('abierta')) return;
+        openChest(isla);
+        state.opened[idx] = true; persist(); updateProgress();
+      }
+      img.addEventListener('click', tryOpen);
+      isla.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); tryOpen(); } });
+    });
+
+    // Final handlers
+    function tryOpenFinal(){
+      if(!state.opened.every(Boolean)) { pulse(finalIsla.querySelector('.tooltip')); return; }
+      if(finalIsla.classList.contains('abierta')) return;
+      openFinal();
+    }
+    finalImg.addEventListener('click', tryOpenFinal);
+    finalIsla.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); tryOpenFinal(); } });
+
+    // ====== Llave (tomar/soltar) ======
+    function toggleKey(force){
+      state.holdingKey = force ?? !state.holdingKey;
+      document.body.classList.toggle('holding', state.holdingKey);
+      estadoLlave.textContent = state.holdingKey ? '🔓 Llave en mano — toca un cofre' : '🔒 Cofres bloqueados — toma la llave';
+    }
+    llaveBtn.addEventListener('click', () => toggleKey());
+    window.addEventListener('keydown', (e)=>{ if(e.key.toLowerCase()==='l') toggleKey(); if(e.key.toLowerCase()==='r') resetAll(); });
+    window.addEventListener('mousemove', (e)=>{ if(!state.holdingKey) return; cursorKey.style.left=(e.clientX+10)+'px'; cursorKey.style.top=(e.clientY+10)+'px'; });
+
+    // ====== Helpers ======
+    function openChest(isla, {silent=false}={}){
+      const img = isla.querySelector('.cofreImg');
+      const lock = isla.querySelector('.candado');
+      img.src = 'cofreabierto.png';
+      isla.classList.add('abierta');
+      lock?.remove();
+      if(!silent){ sparkleBurst(isla); ping(); }
+    }
+
+    // 🎬 Mostrar cinemática y ocultar todo lo demás
+    function showCinematic(){
+      // Ocultar interfaz y mapa
+      document.querySelector('header').style.display = 'none';
+      mapa.style.display = 'none';
+      // Mostrar overlay final
+      cinematic.style.display = 'grid';
+      confetti(200);
+      // Soltar la llave si la traía
+      toggleKey(false);
+    }
+
+    function openFinal(){
+      finalImg.src = 'cofreabierto.png';
+      finalIsla.classList.add('abierta');
+      $('#finalBrillos') && sparkleBurst(finalIsla);
+      revelacion.style.display = 'block';
+      confetti(140); fanfare();
+
+      // 🔔 Lanza la CINEMÁTICA tras un breve beat
+      setTimeout(showCinematic, 1200);
+    }
+
+    function updateProgress(){
+      const n = state.opened.filter(Boolean).length; prog.textContent = n;
+      if(n===5){ finalIsla.querySelector('.tooltip').textContent = '¡Ábreme ahora!'; bounce(finalImg); }
+    }
+
+    // ⬇️ Persistencia SOLO por sesión (se borra al cerrar el navegador/ventana)
+    function persist(){ sessionStorage.setItem('openedCofres', JSON.stringify(state.opened)); }
+
+    function resetAll(){
+      sessionStorage.removeItem('openedCofres');
+      state.opened=[false,false,false,false,false];
+      updateProgress();
+      $$('.isla[data-index]').forEach(isla=>{
+        isla.classList.remove('abierta');
+        const img=isla.querySelector('.cofreImg');
+        img.src='cofrecerrado.png';
+        if(!isla.querySelector('.candado')){
+          const lock=document.createElement('div');
+          lock.className='candado';
+          isla.appendChild(lock);
+        }
+      });
+      finalIsla.classList.remove('abierta');
+      finalImg.src='cofrecerrado.png';
+      revelacion.style.display='none';
+
+      // Mostrar de nuevo mapa y header; ocultar la cinemática
+      document.querySelector('header').style.display = '';
+      mapa.style.display = '';
+      cinematic.style.display = 'none';
+
+      confetti(40);
+      toggleKey(false);
+    }
+    btnReset.addEventListener('click', resetAll);
+
+    // Visual effects
+    function putSparkles(container){
+      if(!container) return;
+      for(let i=0;i<10;i++){
+        const s=document.createElement('span');
+        s.style.setProperty('--tx', (Math.random()*80-40)+'px');
+        s.style.setProperty('--ty', (Math.random()*-40-10)+'px');
+        s.style.left = (40+Math.random()*24-12)+'%';
+        s.style.top = (20+Math.random()*20-10)+'%';
+        s.style.animationDelay = (Math.random()*0.6)+'s';
+        container.appendChild(s);
+      }
+    }
+    function sparkleBurst(scope){ const rect=scope.getBoundingClientRect(); for(let i=0;i<16;i++){ const d=document.createElement('div'); d.style.position='fixed'; d.style.left=(rect.left+rect.width/2)+'px'; d.style.top=(rect.top+rect.height/2)+'px'; d.style.width='6px'; d.style.height='6px'; d.style.borderRadius='50%'; d.style.background=`hsl(${Math.random()*360},90%,60%)`; d.style.pointerEvents='none'; d.style.zIndex=9999; document.body.appendChild(d); const dx=(Math.random()-0.5)*160, dy=(Math.random()-0.7)*160; d.animate([{transform:'translate(0,0)', opacity:1},{transform:`translate(${dx}px,${dy}px)`, opacity:0}],{duration:700+Math.random()*300, easing:'ease-out'}).onfinish=()=>d.remove(); } }
+    function bounce(el){ el.animate([{transform:'translate(-50%, -50%) scale(1)'},{transform:'translate(-50%, -50%) scale(1.08)'},{transform:'translate(-50%, -50%) scale(1)'}],{duration:600}); }
+
+    function pulse(el, ms=800){ if(!el) return; el.animate([{transform:'translate(-50%,-8px) scale(1)'},{transform:'translate(-50%,-8px) scale(1.08)'}],{duration:ms,iterations:2,easing:'ease-in-out'}); }
+
+    // Confeti ligero sin dependencias
+    function confetti(count=80){ const pieces=[]; for(let i=0;i<count;i++){ const d=document.createElement('div'); d.style.position='fixed'; d.style.left=Math.random()*100+'vw'; d.style.top='-10px'; d.style.width='8px'; d.style.height='12px'; d.style.background=`hsl(${Math.random()*360}, 90%, 60%)`; d.style.opacity='.9'; d.style.transform=`rotate(${Math.random()*360}deg)`; d.style.pointerEvents='none'; d.style.zIndex=9999; d.style.borderRadius='2px'; document.body.appendChild(d); const duration=1500+Math.random()*1500; d.animate([{transform:d.style.transform, top:'-10px'},{transform:`rotate(${Math.random()*720}deg)`, top:'110vh'}], {duration, easing:'cubic-bezier(.2,.8,.2,1)'}).onfinish=()=> d.remove(); } }
+
+    // Audio web simple
+    const ac = new (window.AudioContext||window.webkitAudioContext)();
+    function ping(){ const o=ac.createOscillator(); const g=ac.createGain(); o.type='triangle'; o.frequency.value=880; g.gain.value=.001; o.connect(g).connect(ac.destination); o.start(); g.gain.exponentialRampToValueAtTime(0.00001, ac.currentTime+0.2); o.stop(ac.currentTime+0.21); }
+    function fanfare(){ const notes=[523,659,784,1046]; let t=ac.currentTime; notes.forEach((f,i)=>{ const o=ac.createOscillator(), g=ac.createGain(); o.type='sine'; o.frequency.value=f; g.gain.value=.0008; o.connect(g).connect(ac.destination); o.start(t+i*0.12); g.gain.exponentialRampToValueAtTime(0.00001, t+i*0.12+0.4); o.stop(t+i*0.12+0.42); }); }
+
+    // Inicializar
+    updateProgress();
+  </script>
+</body>
+</html>
